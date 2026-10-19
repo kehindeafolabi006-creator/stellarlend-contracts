@@ -29,7 +29,7 @@ This document outlines the procedures for managing oracle configurations in the 
 
 | Role | Permissions | Responsibilities |
 |------|-------------|------------------|
-| **Admin** | - Configure oracle parameters<br>- Set/remove primary oracles<br>- Set/remove fallback oracles<br>- Pause/resume oracle updates<br>- Update prices directly | - System configuration<br>- Oracle management<br>- Emergency operations |
+| **Admin** | - Configure oracle parameters<br>- Set/remove primary oracles<br>- Set/remove fallback oracles<br>- Pause/resume oracle updates<br>- Configure the oracle signing key | - System configuration<br>- Oracle management<br>- Emergency operations |
 | **Primary Oracle** | - Update prices for registered assets<br>- Read price feeds | - Regular price updates<br>- Market data provision |
 | **Fallback Oracle** | - Update prices when primary is stale<br>- Read fallback price feeds | - Backup price provision<br>- Redundancy support |
 | **Public/Other** | - Read price feeds only | - Price consumption |
@@ -38,7 +38,7 @@ This document outlines the procedures for managing oracle configurations in the 
 
 1. **Admin Operations**: Require admin address verification
 2. **Oracle Operations**: Verify oracle is registered for the asset
-3. **Price Updates**: Validate caller authorization and price data
+3. **Price Updates**: Any relayer may submit a payload signed by the configured Ed25519 oracle key
 4. **Configuration Changes**: Admin-only with additional validation
 
 ## Price Move-Cap Circuit Breaker
@@ -582,8 +582,12 @@ Monitor both events to detect oracle health issues in production.
 To support multi-asset operations or require price availability checks on specific assets:
 - **`set_collateral_asset(env, asset)`**: Admin-only method to configure the address of the asset used as collateral.
 - **`get_collateral_asset(env)`**: Returns the configured collateral asset address, if any.
+- **`set_debt_asset(env, asset)`**: Admin-only method to configure the debt asset used for single-position valuation.
+- **`get_debt_asset(env)`**: Returns the configured debt asset address, if any.
 
-If a collateral asset is configured, both `borrow` and `liquidate` operations (and view functions like `get_position` and `get_health_factor`) require a valid on-chain `OraclePrice` record to value the collateral. If the price record is absent or cannot be loaded, the contract rejects the transaction with a `PriceUnavailable (5004)` error code.
+When both assets are configured and differ, `borrow`, `withdraw`, and `liquidate` require fresh prices for both assets and value the collateral and debt in the oracle's seven-decimal scale. Liquidation converts the repaid debt value into collateral token units before applying the incentive. If the debt asset is unset or matches the collateral asset, the legacy raw-unit health-factor behavior is retained.
+
+Read-only views remain callable with stale prices. Use `get_position_v2` to inspect its `price_stale` flag; the view reports the health factor from the last stored prices when available.
 
 ### New files added
 
